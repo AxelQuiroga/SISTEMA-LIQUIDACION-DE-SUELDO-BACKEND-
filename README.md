@@ -1,6 +1,8 @@
 # Sistema Recibo de Sueldo - Backend
 
 API REST para gestionar empleados, recibos de sueldo y usuarios con roles.
+(El proyecto fue reorganizado para separar backend y frontend en repositorios independientes.
+Por ese motivo el historial de commits del backend comienza desde esta versión.)
 
 ## Stack
 - Node.js + Express
