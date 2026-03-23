@@ -10,6 +10,11 @@ export const createEmployeeValidator = [
     .isLength({ min: 2 }).withMessage("El nombre debe tener al menos 2 caracteres")
     .trim(),
 
+    body("last_name")
+    .notEmpty().withMessage("Apellido obligatorio")
+    .isLength({ min: 2 }).withMessage("Mínimo 2 caracteres")
+    .trim(),
+
     body("dni")
     .notEmpty().withMessage("El campo dni es obligatorio")
     .isNumeric().withMessage("El campo dni debe ser un número"),
