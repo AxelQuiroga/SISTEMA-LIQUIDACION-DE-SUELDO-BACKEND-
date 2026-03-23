@@ -1,9 +1,7 @@
 import { body } from "express-validator";
 
 export const createEmployeeValidator = [
-    body("user_id")
-    .notEmpty().withMessage("El campo user_id es obligatorio")
-    .isInt().withMessage("El campo user_id debe ser un número entero"),
+   
 
     body("first_name")
     .notEmpty().withMessage("Nombre es obligatorio")
