@@ -2,7 +2,7 @@ import pool from "../config/db.js";
 
 export const getAllPayrolls = async () => {
   const { rows } = await pool.query(
-    `SELECT id, employee_id, period, gross_salary, deductions, net_salary, created_by, created_at
+    `SELECT id, employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by, created_at
      FROM payrolls
      ORDER BY id`,
   );
@@ -11,7 +11,7 @@ export const getAllPayrolls = async () => {
 
 export const getPayrollById = async (id) => {
   const { rows } = await pool.query(
-    `SELECT id, employee_id, period, gross_salary, deductions, net_salary, created_by, created_at
+    `SELECT id, employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by, created_at
     FROM payrolls WHERE id=$1`,
     [id],
   );
@@ -20,7 +20,7 @@ export const getPayrollById = async (id) => {
 
 export const getPayrollsByEmployee = async (employee_id) => {
   const { rows } = await pool.query(
-    `SELECT id, employee_id, period, gross_salary, deductions, net_salary, created_by, created_at
+    `SELECT id, employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by, created_at
       FROM payrolls WHERE employee_id=$1
       ORDER BY period`,
     [employee_id],
@@ -32,34 +32,35 @@ export const createPayroll = async ({
   employee_id,
   period,
   gross_salary,
-  deductions,
+  total_non_remunerative,
+  total_deductions,
   net_salary,
   created_by,
 }) => {
   const { rows } = await pool.query(
     `INSERT INTO payrolls
-            (employee_id,period,gross_salary
-    ,deductions,net_salary,created_by,created_at)
-    VALUES ($1,$2,$3,$4,$5,$6,NOW())
-    RETURNING id, employee_id, period, gross_salary, deductions, net_salary, created_by, created_at`,
-    [employee_id, period, gross_salary, deductions, net_salary, created_by],
+            (employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+    RETURNING id, employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by, created_at`,
+    [employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by],
   );
   return rows[0];
 };
 
 export const updatePayroll = async (
   id,
-  { period, gross_salary, deductions, net_salary },
+  { period, gross_salary, total_non_remunerative, total_deductions, net_salary },
 ) => {
   const { rows } = await pool.query(
     `UPDATE payrolls
      SET period=$1,
          gross_salary=$2,
-         deductions=$3,
-         net_salary=$4
-     WHERE id=$5
-     RETURNING id, employee_id, period, gross_salary, deductions, net_salary, created_by, created_at`,
-    [period, gross_salary, deductions, net_salary, id],
+         total_non_remunerative=$3,
+         total_deductions=$4,
+         net_salary=$5
+     WHERE id=$6
+     RETURNING id, employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by, created_at`,
+    [period, gross_salary, total_non_remunerative, total_deductions, net_salary, id],
   );
 
   return rows[0];
@@ -68,7 +69,7 @@ export const deletePayroll = async (id) => {
   const { rows } = await pool.query(
     `DELETE FROM payrolls 
     WHERE id=$1
-    RETURNING id, employee_id, period, gross_salary, deductions, net_salary, created_by, created_at`,
+    RETURNING id, employee_id, period, gross_salary, total_non_remunerative, total_deductions, net_salary, created_by, created_at`,
     [id],
   );
   return rows[0];
@@ -77,7 +78,7 @@ export const deletePayroll = async (id) => {
 //Trae info del recibo y del empleado asociado en un solo query.
 export const getPayrollWithEmployeeInfo = async () => {
   const { rows } = await pool.query(
-    `SELECT p.id, p.period, p.gross_salary, p.deductions, p.net_salary,
+    `SELECT p.id, p.period, p.gross_salary, p.total_non_remunerative, p.total_deductions, p.net_salary,
             e.first_name, e.last_name, e.position
      FROM payrolls p
      JOIN employees e ON p.employee_id = e.id
@@ -89,7 +90,7 @@ export const getPayrollWithEmployeeInfo = async () => {
 export const getPayrollsByUserId = async (userId) => {
   const { rows } = await pool.query(
     `
-    SELECT p.id, p.employee_id, p.period, p.gross_salary, p.deductions, p.net_salary, p.created_at
+    SELECT p.id, p.employee_id, p.period, p.gross_salary, p.total_non_remunerative, p.total_deductions, p.net_salary, p.created_at
     FROM payrolls p
     JOIN employees e ON p.employee_id = e.id
     WHERE e.user_id = $1

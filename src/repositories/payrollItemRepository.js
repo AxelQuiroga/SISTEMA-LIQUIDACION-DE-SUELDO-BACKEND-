@@ -1,13 +1,13 @@
 import pool from "../config/db.js";
 
-export const createPayrollItem = async ({ payroll_id, concept_id, amount }) => {
+export const createPayrollItem = async ({ payroll_id, concept_id, amount, base_amount }) => {
   const query = `
-    INSERT INTO payroll_items (payroll_id, concept_id, amount)
-    VALUES ($1, $2, $3)
+    INSERT INTO payroll_items (payroll_id, concept_id, amount, base_amount)
+    VALUES ($1, $2, $3, $4)
     RETURNING *
   `;
 
-  const values = [payroll_id, concept_id, amount];
+  const values = [payroll_id, concept_id, amount, base_amount];
 
   const { rows } = await pool.query(query, values);
   return rows[0];
@@ -18,8 +18,10 @@ export const getPayrollItemsByPayroll = async (payroll_id) => {
     SELECT 
       pi.id,
       pi.amount,
+      pi.base_amount,
       pc.name,
-      pc.type
+      pc.category,
+      pc.code
     FROM payroll_items pi
     JOIN payroll_concepts pc 
       ON pi.concept_id = pc.id

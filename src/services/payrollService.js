@@ -1,127 +1,115 @@
-// src/services/payrollService.js
 import * as payrollRepo from '../repositories/payrollsRepository.js';
 import * as employeeRepo from '../repositories/employeesRepository.js';
 import * as payrollItemRepo from "../repositories/payrollItemRepository.js";
-import { calculateNetSalary } from '../utils/calculateNetSalary.js';
+import * as conceptRepo from "../repositories/conceptsRepository.js";
+import { calculatePayroll } from '../utils/calculateNetSalary.js';
 
 export const createPayroll = async (data) => {
   try {
-
+    // 1. Obtener datos del empleado
     const employee = await employeeRepo.getEmployeeById(data.employee_id);
     if (!employee) throw new Error('Empleado no encontrado');
 
-    const net_salary = calculateNetSalary({
-      gross_salary: data.gross_salary,
-      deductions: data.deductions,
-      bonuses: data.bonuses || 0,
-      extra_hours: data.extra_hours || 0
-    });
+    // 2. Calcular antigüedad (años)
+    const hireDate = new Date(employee.hire_date);
+    const today = new Date();
+    let seniorityYears = today.getFullYear() - hireDate.getFullYear();
+    const monthDiff = today.getMonth() - hireDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < hireDate.getDate())) {
+      seniorityYears--;
+    }
+    employee.seniority_years = seniorityYears < 0 ? 0 : seniorityYears;
 
+    // 3. Obtener todos los conceptos activos de la DB
+    const concepts = await conceptRepo.getAllConcepts();
+
+    // 4. EJECUTAR MOTOR DE CÁLCULO
+    const calculation = calculatePayroll(employee, concepts, data.news || {});
+
+    // 5. Guardar cabecera del recibo
     const newPayroll = await payrollRepo.createPayroll({
       employee_id: data.employee_id,
       period: data.period,
-      gross_salary: data.gross_salary,
-      deductions: data.deductions,
-      net_salary,
+      gross_salary: calculation.totals.gross_salary,
+      total_non_remunerative: calculation.totals.total_non_remunerative,
+      total_deductions: calculation.totals.total_deductions,
+      net_salary: calculation.totals.net_salary,
       created_by: data.created_by
     });
 
-    await payrollItemRepo.createPayrollItem({
-      payroll_id: newPayroll.id,
-      concept_id: 1,
-      amount: data.gross_salary
-    });
-
-    if (data.extra_hours) {
-      await payrollItemRepo.createPayrollItem({
+    // 6. Guardar el detalle (ítems)
+    const itemPromises = calculation.items.map(item => 
+      payrollItemRepo.createPayrollItem({
         payroll_id: newPayroll.id,
-        concept_id: 2,
-        amount: data.extra_hours
-      });
-    }
+        concept_id: item.concept_id,
+        amount: item.amount,
+        base_amount: item.base_amount || null
+      })
+    );
 
-    if (data.bonuses) {
-      await payrollItemRepo.createPayrollItem({
-        payroll_id: newPayroll.id,
-        concept_id: 3,
-        amount: data.bonuses
-      });
-    }
+    await Promise.all(itemPromises);
 
-    await payrollItemRepo.createPayrollItem({
-      payroll_id: newPayroll.id,
-      concept_id: 4,
-      amount: data.deductions
-    });
-
-    return newPayroll;
+    return {
+      ...newPayroll,
+      items: calculation.items
+    };
 
   } catch (error) {
-
     if (error.code === '23505') {
       throw new Error('Ya existe una liquidación para este empleado en ese período');
     }
-
     throw error;
   }
 };
 
 export const updatePayroll = async (id, data) => {
-
   const existing = await payrollRepo.getPayrollById(id);
   if (!existing) throw new Error('Recibo no encontrado');
 
-  const gross_salary = data.gross_salary ?? existing.gross_salary;
-  const deductions = data.deductions ?? existing.deductions;
-  const bonuses = data.bonuses ?? 0;
-  const extra_hours = data.extra_hours ?? 0;
+  const employee = await employeeRepo.getEmployeeById(existing.employee_id);
+  
+  // Calcular antigüedad de nuevo por si cambió de un mes a otro
+  const hireDate = new Date(employee.hire_date);
+  const today = new Date();
+  let seniorityYears = today.getFullYear() - hireDate.getFullYear();
+  const monthDiff = today.getMonth() - hireDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < hireDate.getDate())) {
+    seniorityYears--;
+  }
+  employee.seniority_years = seniorityYears < 0 ? 0 : seniorityYears;
 
-  const net_salary = calculateNetSalary({
-    gross_salary,
-    deductions,
-    bonuses,
-    extra_hours
-  });
+  const concepts = await conceptRepo.getAllConcepts();
+  
+  // Si no mandan news nuevas, podríamos intentar reconstruirlas o dejar las que están. 
+  // Por ahora, asumimos que mandan el objeto completo de novedades si quieren actualizar.
+  const calculation = calculatePayroll(employee, concepts, data.news || {});
 
   const updated = await payrollRepo.updatePayroll(id, {
     period: data.period ?? existing.period,
-    gross_salary,
-    deductions,
-    net_salary
+    gross_salary: calculation.totals.gross_salary,
+    total_non_remunerative: calculation.totals.total_non_remunerative,
+    total_deductions: calculation.totals.total_deductions,
+    net_salary: calculation.totals.net_salary
   });
 
-  // sincronizar items
+  // Sincronizar ítems (borramos y volvemos a crear para simplificar)
   await payrollItemRepo.deletePayrollItemsByPayroll(id);
 
-  await payrollItemRepo.createPayrollItem({
-    payroll_id: id,
-    concept_id: 1,
-    amount: gross_salary
-  });
-
-  if (extra_hours) {
-    await payrollItemRepo.createPayrollItem({
+  const itemPromises = calculation.items.map(item => 
+    payrollItemRepo.createPayrollItem({
       payroll_id: id,
-      concept_id: 2,
-      amount: extra_hours
-    });
-  }
+      concept_id: item.concept_id,
+      amount: item.amount,
+      base_amount: item.base_amount || null
+    })
+  );
 
-  if (bonuses) {
-    await payrollItemRepo.createPayrollItem({
-      payroll_id: id,
-      concept_id: 3,
-      amount: bonuses
-    });
-  }
+  await Promise.all(itemPromises);
 
-  await payrollItemRepo.createPayrollItem({
-    payroll_id: id,
-    concept_id: 4,
-    amount: deductions
-  });
-
-  return updated;
+  return {
+    ...updated,
+    items: calculation.items
+  };
 };
 
 //lecturaa

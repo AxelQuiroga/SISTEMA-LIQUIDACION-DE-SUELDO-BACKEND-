@@ -8,6 +8,11 @@ const runTest = async () => {
   try {
     console.log("=== INICIO DEL SCRIPT DE PRUEBA ===");
 
+    // Limpiar para testear de cero
+    await pool.query("TRUNCATE TABLE payroll_items CASCADE");
+    await pool.query("TRUNCATE TABLE payrolls CASCADE");
+    await pool.query("DELETE FROM employees CASCADE");
+
     // 1️⃣ Generar un DNI único aleatorio
     const dniRandom = Math.floor(Math.random() * 90000000) + 10000000; // 10000000 a 99999999
     const users = await pool.query("SELECT id FROM users");
@@ -31,39 +36,45 @@ const runTest = async () => {
     console.log("Empleado creado:", emp);
 
     // 3️⃣ Crear payroll asociado a este empleado
+    // Vamos a probar con una fecha de ingreso de hace 5 años para testear antigüedad
+    await pool.query("UPDATE employees SET hire_date = '2019-01-01' WHERE id = $1", [emp.id]);
+    
+    console.log("Calculando recibo para un empleado con 5 años de antigüedad...");
     const payroll = await payrollService.createPayroll({
       employee_id: emp.id,
-      period: "2026-03",
-      gross_salary: 3000,
-      deductions: 300,
-      bonuses: 10, // opcional, ejemplo
-      extra_hours: 0,
-      created_by: 1, // admin id
+      period: "2024-04",
+      news: {
+        extra_hours_amount: 10000, // 10 lucas de extras
+        via: 5000,                 // 5 lucas de viáticos (no rem)
+        has_absences: false        // Debería cobrar presentismo
+      },
+      created_by: randomUser
     });
-    console.log("Payroll creado:", payroll);
+    console.log("Payroll creado con éxito:", JSON.stringify(payroll, null, 2));
 
-    // 4️⃣ Leer empleado y payroll
-    const fetchedEmp = await employeeService.getEmployeeById(emp.id);
-    const fetchedPayroll = await payrollService.getPayrollById(payroll.id);
-    console.log("Empleado fetch:", fetchedEmp);
-    console.log("Payroll fetch:", fetchedPayroll);
+    // 4️⃣ Leer el recibo con sus ítems
+    const items = await pool.query(`
+      SELECT pi.amount, pc.name, pc.category, pi.base_amount 
+      FROM payroll_items pi 
+      JOIN payroll_concepts pc ON pi.concept_id = pc.id 
+      WHERE pi.payroll_id = $1
+    `, [payroll.id]);
+    
+    console.log("Detalle de conceptos liquidados:");
+    console.table(items.rows);
 
-    // 5️⃣ Actualizar empleado
-    const updatedEmp = await employeeService.updateEmployee(emp.id, {
-      ...fetchedEmp,
-      position: "Tester Senior",
-      base_salary: 3500,
-    });
-    console.log("Empleado actualizado:", updatedEmp);
-
-    // 6️⃣ Actualizar payroll (recalculando net_salary)
+    // 5️⃣ Probar una actualización
+    console.log("Actualizando recibo (agregando inasistencia)...");
     const updatedPayroll = await payrollService.updatePayroll(payroll.id, {
-      gross_salary: 3500,
-      deductions: 350,
-      bonuses: 50,
-      extra_hours: 2,
+      period: "2024-04",
+      news: {
+        extra_hours_amount: 10000,
+        via: 5000,
+        has_absences: true // Ahora debería perder el presentismo
+      }
     });
-    console.log("Payroll actualizado:", updatedPayroll);
+    console.log("Payroll actualizado:", JSON.stringify(updatedPayroll, null, 2));
+
 
     // 7️⃣ Eliminar payroll
     /*const deletedPayroll = await payrollService.deletePayroll(payroll.id);

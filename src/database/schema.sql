@@ -44,10 +44,14 @@ WHERE active = true;
 CREATE TABLE payroll_concepts (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    type VARCHAR(20) NOT NULL,
+    code VARCHAR(20) UNIQUE, -- Ej: 'BAS', 'JUB', 'OS'
+    category VARCHAR(20) NOT NULL, -- 'remunerative', 'non_remunerative', 'deduction'
+    is_percentage BOOLEAN DEFAULT false,
+    base_value NUMERIC(5,2), -- El valor del % (ej: 11.00)
+    active BOOLEAN DEFAULT true,
 
-    CONSTRAINT payroll_concepts_type_check
-    CHECK (type IN ('earning','deduction'))
+    CONSTRAINT payroll_concepts_category_check
+    CHECK (category IN ('remunerative', 'non_remunerative', 'deduction'))
 );
 
 
@@ -57,9 +61,10 @@ CREATE TABLE payrolls (
     id SERIAL PRIMARY KEY,
     employee_id INTEGER NOT NULL,
     period VARCHAR(7) NOT NULL,
-    gross_salary NUMERIC(12,2) NOT NULL,
-    deductions NUMERIC(12,2) NOT NULL,
-    net_salary NUMERIC(12,2) NOT NULL,
+    gross_salary NUMERIC(12,2) NOT NULL, -- Total Remunerativo
+    total_non_remunerative NUMERIC(12,2) DEFAULT 0,
+    total_deductions NUMERIC(12,2) DEFAULT 0, -- Suma de todas las retenciones
+    net_salary NUMERIC(12,2) NOT NULL, -- El "en mano"
     created_by INTEGER NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -85,10 +90,12 @@ CREATE TABLE payroll_items (
     payroll_id INTEGER,
     concept_id INTEGER,
     amount NUMERIC(10,2) NOT NULL,
+    base_amount NUMERIC(10,2), -- Sobre qué se calculó (ej: el bruto)
 
     CONSTRAINT payroll_items_payroll_id_fkey
     FOREIGN KEY (payroll_id)
-    REFERENCES payrolls(id),
+    REFERENCES payrolls(id)
+    ON DELETE CASCADE,
 
     CONSTRAINT payroll_items_concept_id_fkey
     FOREIGN KEY (concept_id)
